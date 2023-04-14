@@ -35,8 +35,16 @@ class Encoder:
         #for bag of words, store a list of the words in the bag
         self.words = []
 
-        #set the encoding method to None for now
-        self.encoding_method = None
+        #enabling the ability filter encoding to only specific words in the bag-of-words
+        #TODO: Implement Filtering for specific features encodings/words in the samples
+        self.filtering_enabled = False
+        self.filtered_encoding_mappings = {}
+        self.filtered_encoded_data: np.array = []
+
+        self.filtered_words = [] #specific to bag of words filtering
+        
+        #set the encoding type to None for now
+        self.encoder_type = None
 
         #set verbose status
         self.verbose = verbose
@@ -44,15 +52,16 @@ class Encoder:
         return
 
 
-    def encode(self,encoding_mappings:dict = None, normalize = True):
+    def encode(self,encoding_mappings:dict = None, normalize = True, Binarize = False):
         """Encodes the data from a list of strings to a list of numbers
 
         Args:
             encoding_keys (dict, optional): Optional ability to apply a custom set of encoding keys If none is provided, then the function generates them automatically. Defaults to None.
             normalize (bool, optional): normalize the encoded values to be between 0 and 1. Defaults to True.
+            Binarize (bool, optional): on True, will normalize the encoded values and then set to either 0 or 1. Defaults to False.
         """
         #set the encoding method
-        self.encoding_method = "encode"
+        self.encoder_type = "encode"
         
         #generate feature,encoding pairs for each possible feature in the data
         if not encoding_mappings:
@@ -65,7 +74,7 @@ class Encoder:
             self.encoding_mappings = encoding_mappings
         
         #apply normalization if desired
-        if normalize:
+        if normalize or Binarize:
             #get the max and min value
             max_val = max(self.encoding_mappings.values())
             min_val = min(self.encoding_mappings.values())
@@ -75,8 +84,12 @@ class Encoder:
         #apply the encoding
         self.encoded_data = np.array([self.encoding_mappings[feature] for feature in self.data])
 
+        if Binarize:
+            for key in self.encoding_mappings:
+                self.encoding_mappings[key] = round(self.encoding_mappings[key])
+
         if self.verbose:
-            print("encoding_mappings: {}\n".format(self.encoding_mappings))
+            print("Encoder.encode: encoding_mappings: {}\n".format(self.encoding_mappings))
         
         return
 
@@ -90,12 +103,12 @@ class Encoder:
             lematize (bool, optional): On true, will lematize words. Defaults to True.
         """
         #set encoding method
-        self.encoding_method = "bag-of-words"
+        self.encoder_type = "bag-of-words"
 
         #clean the text data
         if clean_strings:
             self.data = [
-                self.clean_text(
+                self._clean_text(
                 text,
                 remove_stop_words=remove_stop_words,
                 lematize=lematize) for text in self.data]
@@ -127,7 +140,7 @@ class Encoder:
 
         return
     
-    def clean_text(self,text, remove_stop_words = True, lematize = True):
+    def _clean_text(self,text, remove_stop_words = True, lematize = True):
         """removes common words, converts to lower case, and decontracts a given string
 
         Args:
@@ -142,7 +155,7 @@ class Encoder:
         text = text.lower()
 
         # Expand contractions
-        text  =  self.decontracted(text)
+        text  =  self._decontracted(text)
         # remove numbers
         text = re.sub(r"\d+",'',text)
         # substitue U.S. with united states
@@ -164,7 +177,7 @@ class Encoder:
 
         return text
     
-    def decontracted(self,phrase):
+    def _decontracted(self,phrase):
         """Decontracts a phrase on true
 
         Args:
@@ -188,33 +201,12 @@ class Encoder:
         phrase = re.sub(r"\'m", " am", phrase)
         return phrase
 
-    def get_most_common(self,max_terms = 10):
+    def apply_filter(self, filtered_terms:list):
 
-        #ensure that we aren't requesting more terms than available
-        n = max_terms
-        if max_terms > np.shape(self.encoded_data)[1]:
-            n = len(term_frequency)
+        #set filtering enabled flag
+        self.filtering_enabled = True
 
-        #compute the number of times each term appears
-        term_frequency = np.sum(self.encoded_data,0)
-
-        #get the arg sort to find the indicies of the terms that appear the most
-        sorted_indicies = np.argsort(-1 * term_frequency)
-
-        #get the terms that appear the most
-        most_common_features = []
-        for i in range(0,n):
-            idx = sorted_indicies[i]
-            feature = self.words[idx]
-            most_common_features.append(feature)
-
-        #get their respective count
-        counts = term_frequency[sorted_indicies]
-
-        #return the terms and their respective count
-        
-        
-        return most_common_features,counts[0:n]
+        #TODO: implement filtering
     
     def apply_encoding_to_new_data(self,new_data:list):
         pass
