@@ -24,24 +24,32 @@ class Encoder:
         #variable to store the encoding keys
         self.encoding_mappings = {}
 
+        #variable to store the feature names
+        self.feature_names = []
+
         #variable to store the encoded data
         self.encoded_data: np.array = []
 
+
+        #Encoder Relevant Terms
+        self.normalize:bool
+        self.binarize:bool
+
+        #Bag-of-words relevant terms
         #configure a tokenizer, lematizer, and vectorizer
         self.tokenizer = RegexpTokenizer(r'\w+')
         self.lematizer = WordNetLemmatizer()
         self.vectorizer: CountVectorizer
-
-        #for bag of words, store a list of the words in the bag
-        self.words = []
 
         #enabling the ability filter encoding to only specific words in the bag-of-words
         #TODO: Implement Filtering for specific features encodings/words in the samples
         self.filtering_enabled = False
         self.filtered_encoding_mappings = {}
         self.filtered_encoded_data: np.array = []
+        self.filtered_feature_names = []
 
-        self.filtered_words = [] #specific to bag of words filtering
+        #new vectorizer specific to filtering
+        self.filtered_vectorizer: CountVectorizer
         
         #set the encoding type to None for now
         self.encoder_type = None
@@ -62,16 +70,21 @@ class Encoder:
         """
         #set the encoding method
         self.encoder_type = "encode"
+
+        #set normalization and binarization status
+        self.normalize = normalize
+        self.binarize = Binarize
         
         #generate feature,encoding pairs for each possible feature in the data
         if not encoding_mappings:
             #get a list of unique strings in the data
-            features = list(set(self.data))
-            num_features = len(features)
+            self.feature_names = list(set(self.data))
+            num_features = len(self.feature_names)
             encodings = [i + 1 for i in range(num_features)]
-            self.encoding_mappings = {feature:encoding for feature,encoding in zip(features,encodings)}
+            self.encoding_mappings = {feature:encoding for feature,encoding in zip(self.feature_names,encodings)}
         else:
             self.encoding_mappings = encoding_mappings
+            self.feature_names = [feature for feature in encoding_mappings.keys()]
         
         #apply normalization if desired
         if normalize or Binarize:
@@ -123,10 +136,10 @@ class Encoder:
         self.encoded_data = self.vectorizer.fit_transform(self.data).toarray()
         
         #get a list of words
-        self.words = self.vectorizer.get_feature_names_out()
-        num_unique_words = len(self.words)
+        self.feature_names = self.vectorizer.get_feature_names_out()
+        num_unique_words = len(self.feature_names)
         encodings = [i  for i in range(num_unique_words)]
-        self.encoding_mappings = {word:encoding for word,encoding in zip(self.words,encodings)}
+        self.encoding_mappings = {word:encoding for word,encoding in zip(self.feature_names,encodings)}
         
         #reset the vectorizer to use only this set of words moving forward
         self.vectorizer = CountVectorizer(
@@ -201,12 +214,93 @@ class Encoder:
         phrase = re.sub(r"\'m", " am", phrase)
         return phrase
 
-    def apply_filter(self, filtered_terms:list):
+    def configure_filter(self, filtered_terms:list):
 
         #set filtering enabled flag
         self.filtering_enabled = True
 
+        #save the filtered feature names
+
         #TODO: implement filtering
+        if self.encoder_type == "encode":
+            self._configure_filter_encode(filtered_terms)
+        elif self.encoder_type == "bag-of-words":
+            self._configure_filter_bag_of_words(filtered_terms)
+
+        self.filtered_encoding_mappings = {}
+        self.filtered_encoded_data: np.array = []
+
+
+    def _configure_filter_bag_of_words(self, filtered_terms:list):
+        """Configure and apply  a filter to data that has been encoded ot be a bag-of-words. 
+        The filter reduces the number of features to only those included in the provided filtered_terms list.
+        Input samples that do not include any of the filtered terms will have all zeros
+
+        Args:
+            filtered_terms (list): A list of the only terms that should be used to encode the data
+        """
+
+        #set the filtered words list
+        self.filtered_feature_names = filtered_terms
+
+        num_filtered_words = len(self.filtered_feature_names)
+        encodings = [i  for i in range(num_filtered_words)]
+        self.filtered_encoding_mappings = {word:encoding for word,encoding in zip(self.filtered_feature_names,encodings)}
+        
+        #reset the vectorizer to use only this set of words moving forward
+        self.filtered_vectorizer = CountVectorizer(
+            lowercase=False,
+            tokenizer=lambda doc: doc,
+            ngram_range=(1,1),
+            analyzer='word',
+            vocabulary= self.encoding_mappings
+        )
+        self.filtered_encoded_data = self.filtered_vectorizer.fit_transform(self.data).toarray()
+
+        return
+
+    def _configure_filter_encode(self, filtered_terms: list):
+        """Configure and apply  a filter to data that has been encoded using the encode method of encoding. 
+        The filter reduces the number of features to only those included in the provided filtered_terms list.
+        Input samples that do not include any of the filtered terms will have all zeros
+
+        Args:
+            filtered_terms (list): A list of the only terms that should be used to encode the data
+        """
+        #setup the feature names, include and include an encoding for "other" in the encodings
+        self.filtered_feature_names = ["other"]
+        for item in filtered_terms:
+            self.filtered_feature_names.append(item)
+        
+        #generate a new series of filtered feature encodings
+        num_features = len(self.feature_names)
+        encodings = [i for i in range(num_features)]
+        self.filtered_encoding_mappings = {feature:encoding for feature,encoding in zip(self.filtered_feature_names,encodings)}
+
+        #apply normalization if desired
+        if self.normalize or self.binarize:
+            #get the max and min value
+            max_val = max(self.filtered_encoding_mappings.values())
+            min_val = min(self.filtered_encoding_mappings.values())
+            for key in self.filtered_encoding_mappings:
+                self.filtered_encoding_mappings[key] = (self.filtered_encoding_mappings[key] - min_val)/(max_val - min_val)
+        
+        #apply the encoding
+        self.filtered_encoded_data = np.array([self.filtered_encoding_mappings[feature] 
+                                               if feature in self.filtered_feature_names
+                                               else self.filtered_encoding_mappings["other"] 
+                                               for feature in self.data])
+
+        if self.binarize:
+            for key in self.filtered_encoding_mappings:
+                self.filtered_encoding_mappings[key] = round(self.filtered_encoding_mappings[key])
+
+        return
+    
+    def apply_filter_to_data(self,new_data:list):
+        pass
+    #TODO implement this method
+
     
     def apply_encoding_to_new_data(self,new_data:list):
         pass
