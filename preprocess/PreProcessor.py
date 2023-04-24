@@ -112,6 +112,21 @@ class PreProcessor:
             lematize=lematize
         )
         return feature_encoder
+
+    def get_credit_history_encoder_for_features(self,feature_names,compute_credit_history=True,normalize=False):
+        """Returns a credit_history Encoder object
+
+        Args:
+            feature_names (_type_): the column names in the data array used to store credit history values.
+            compute_credit_history(bool, optional): on True, computes a single value using a weighted average to represent the credit history. On false, leaves the creit history simply as an array value. Defaults to True
+        Returns:
+            Encoder: a credit history encoder
+        """
+
+        credit_history_encoder = Encoder(self.df[feature_names],verbose=self.verbose)
+        credit_history_encoder.credit_history(compute_credit_history=True)
+        return credit_history_encoder
+
     
     def get_most_popular_features(self,encoder:Encoder,max_terms = 10,label_filters:list = None):
         """Returns the most popular features for a given encoder with the option to filter for specific labels

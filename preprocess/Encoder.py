@@ -8,6 +8,7 @@ from nltk.tokenize import RegexpTokenizer
 from nltk.stem import WordNetLemmatizer
 import itertools
 from sklearn.feature_extraction.text import CountVectorizer
+#from CustomExceptions import IncompatibleEncoder
 
 
 class Encoder:
@@ -19,7 +20,7 @@ class Encoder:
             verbose (bool, optional): on True, prints out extra information. Defaults to False.
         """
         #variable to store the raw data
-        self.data = data
+        self.data:pd.DataFrame = data
 
         #variable to store the encoding keys
         self.encoding_mappings = {}
@@ -32,7 +33,7 @@ class Encoder:
 
 
         #Encoder Relevant Terms
-        self.normalize:bool
+        self.normalize:bool #also used for weighted-average encoder
         self.binarize:bool
 
         #Bag-of-words relevant terms
@@ -40,6 +41,10 @@ class Encoder:
         self.tokenizer = RegexpTokenizer(r'\w+')
         self.lematizer = WordNetLemmatizer()
         self.vectorizer: CountVectorizer
+
+        
+        #Credit History Variables
+        self.credit_weights = np.array([[-1,-0.5,0,0.5,1]])
 
         #enabling the ability filter encoding to only specific words in the bag-of-words
         #TODO: Implement Filtering for specific features encodings/words in the samples
@@ -214,6 +219,33 @@ class Encoder:
         phrase = re.sub(r"\'m", " am", phrase)
         return phrase
 
+    def credit_history(self,compute_credit_history=True):
+
+        #set the encoder type
+        self.encoder_type = "credit history"
+        
+        #convert the data to be a numpy array
+        credit_counts = self.data.replace('N/A','0').astype('int').to_numpy()
+
+        if compute_credit_history:
+            self.encoded_data = self._compute_credit_histories(credit_counts)
+        else:
+            self.encoded_data = np.copy(credit_counts)
+
+        return
+    
+    def _compute_credit_histories(self,credit_counts:np.array):
+        """Compute the credit history score
+
+        Args:
+            credit_counts (np.array): list of credit counts in the order of ['pants on fire','false','barely true','half true',mostly true']
+        """
+
+        sums = np.sum(credit_counts,1)
+        weighted_credit_counts = credit_counts / sums[:,None]
+
+        return np.matmul(weighted_credit_counts,np.transpose(self.credit_weights))[:,0]
+    
     def configure_filter(self, filtered_terms:list):
 
         #set filtering enabled flag
@@ -226,6 +258,8 @@ class Encoder:
             self._configure_filter_encode(filtered_terms)
         elif self.encoder_type == "bag-of-words":
             self._configure_filter_bag_of_words(filtered_terms)
+        else:
+            raise IncompatibleEncoder("encode or bag-of-words")
 
         self.filtered_encoding_mappings = {}
         self.filtered_encoded_data: np.array = []
