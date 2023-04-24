@@ -8,7 +8,7 @@ from nltk.tokenize import RegexpTokenizer
 from nltk.stem import WordNetLemmatizer
 import itertools
 from sklearn.feature_extraction.text import CountVectorizer
-#from CustomExceptions import IncompatibleEncoder
+from CustomExceptions import IncompatibleEncoder,FilteringNotEnabled
 
 
 class Encoder:
@@ -45,6 +45,7 @@ class Encoder:
         
         #Credit History Variables
         self.credit_weights = np.array([[-1,-0.5,0,0.5,1]])
+        self.compute_credit_history_enable = False
 
         #enabling the ability filter encoding to only specific words in the bag-of-words
         #TODO: Implement Filtering for specific features encodings/words in the samples
@@ -88,7 +89,7 @@ class Encoder:
             encodings = [i + 1 for i in range(num_features)]
             self.encoding_mappings = {feature:encoding for feature,encoding in zip(self.feature_names,encodings)}
         else:
-            self.encoding_mappings = encoding_mappings
+            self.encoding_mappings = encoding_mappings.copy()
             self.feature_names = [feature for feature in encoding_mappings.keys()]
         
         #apply normalization if desired
@@ -99,17 +100,44 @@ class Encoder:
             for key in self.encoding_mappings:
                 self.encoding_mappings[key] = (self.encoding_mappings[key] - min_val)/(max_val - min_val)
         
-        #apply the encoding
-        self.encoded_data = np.array([self.encoding_mappings[feature] for feature in self.data])
-
+        #binarize the encodings if desired
         if Binarize:
             for key in self.encoding_mappings:
                 self.encoding_mappings[key] = round(self.encoding_mappings[key])
+
+        #apply the encoding
+        self.encoded_data = self._apply_encode_encoding(self.data,apply_filters=False)
 
         if self.verbose:
             print("Encoder.encode: encoding_mappings: {}\n".format(self.encoding_mappings))
         
         return
+    
+    def _apply_encode_encoding(self,data:pd.Series, apply_filters = False):
+        """Apply the bag-of-words encoding to the given data
+
+        Args:
+            data (pd.Series): the data to apply the encoding to
+            apply_filters (bool, optional): On True, applies filtering to the encoded data. Defaults to False.
+
+        Raises:
+            FilteringNotEnabled: Raised when filters are requested to be applied, but filtering is not enabled
+
+        Returns:
+            np.array: the encoded data
+        """
+        
+        if (apply_filters):
+            if self.filtering_enabled:
+                #return the filtered-encoded data
+                return np.array([self.filtered_encoding_mappings[feature] 
+                                if feature in self.filtered_feature_names
+                                else self.filtered_encoding_mappings["other"] 
+                                for feature in data])
+            else:
+                raise FilteringNotEnabled(self.filtering_enabled)
+        else:
+            return np.array([self.encoding_mappings[feature] for feature in data])
 
 
     def bag_of_words(self, clean_strings = True, remove_stop_words = True, lematize = True):
@@ -154,7 +182,9 @@ class Encoder:
             analyzer='word',
             vocabulary= self.encoding_mappings
         )
-        self.encoded_data = self.vectorizer.fit_transform(self.data).toarray()
+
+        #apply the encoding
+        self.encoded_data = self._apply_bag_of_words_encoding(self.data,apply_filters=False)
 
         return
     
@@ -219,28 +249,65 @@ class Encoder:
         phrase = re.sub(r"\'m", " am", phrase)
         return phrase
 
-    def credit_history(self,compute_credit_history=True):
+    def _apply_bag_of_words_encoding(self,data: pd.Series,apply_filters = False):
+        """Apply the bag-of-words encoding to the given data
 
+        Args:
+            data (pd.Series): the data to apply the encoding to
+            apply_filters (bool, optional): On True, applies filtering to the encoded data. Defaults to False.
+
+        Raises:
+            FilteringNotEnabled: Raised when filters are requested to be applied, but filtering is not enabled
+
+        Returns:
+            np.array: the encoded data
+        """
+        if (apply_filters):
+            if self.filtering_enabled:
+                return self.filtered_vectorizer.fit_transform(data).toarray()
+            else:
+                raise FilteringNotEnabled(self.filtering_enabled)
+        else:
+            return self.vectorizer.fit_transform(data).toarray()
+
+    def credit_history(self,compute_credit_history=True):
+        """Compute the credit history for each row of the data
+
+        Args:
+            compute_credit_history(bool, optional): on True, computes a single value using a weighted average to represent the credit history. On false, leaves the creit history simply as an array value. Defaults to True
+        """
         #set the encoder type
         self.encoder_type = "credit history"
+        self.compute_credit_history_enable = compute_credit_history
         
-        #convert the data to be a numpy array
-        credit_counts = self.data.replace('N/A','0').astype('int').to_numpy()
-
-        if compute_credit_history:
-            self.encoded_data = self._compute_credit_histories(credit_counts)
-        else:
-            self.encoded_data = np.copy(credit_counts)
-
-        return
+        self.encoded_data = self._apply_credit_history_encoding(self.data)
     
+    def _apply_credit_history_encoding(self,data:pd.DataFrame):
+        """Apply credit history encoding to the given pandas Data Frame
+
+        Args:
+            data (pd.DataFrame): the data to apply the encoding to
+
+        Returns:
+            np.array: the encoded data
+        """
+
+        #convert the data to be a numpy array
+        credit_counts = data.replace('N/A','0').astype('int').to_numpy()
+
+        if self.compute_credit_history_enable:
+            return self._compute_credit_histories(credit_counts)
+        else:
+            return np.copy(credit_counts)
+
+
     def _compute_credit_histories(self,credit_counts:np.array):
         """Compute the credit history score
 
         Args:
             credit_counts (np.array): list of credit counts in the order of ['pants on fire','false','barely true','half true',mostly true']
         """
-
+        
         sums = np.sum(credit_counts,1)
         weighted_credit_counts = credit_counts / sums[:,None]
 
@@ -251,15 +318,14 @@ class Encoder:
         #set filtering enabled flag
         self.filtering_enabled = True
 
-        #save the filtered feature names
 
-        #TODO: implement filtering
+        #configure the requested filter
         if self.encoder_type == "encode":
             self._configure_filter_encode(filtered_terms)
         elif self.encoder_type == "bag-of-words":
             self._configure_filter_bag_of_words(filtered_terms)
         else:
-            raise IncompatibleEncoder("encode or bag-of-words")
+            raise IncompatibleEncoder("encode or bag-of-words",self.encoder_type)
 
         self.filtered_encoding_mappings = {}
         self.filtered_encoded_data: np.array = []
@@ -289,7 +355,7 @@ class Encoder:
             analyzer='word',
             vocabulary= self.encoding_mappings
         )
-        self.filtered_encoded_data = self.filtered_vectorizer.fit_transform(self.data).toarray()
+        self.filtered_encoded_data = self._apply_bag_of_words_encoding(self.data,apply_filters=True)
 
         return
 
@@ -319,22 +385,42 @@ class Encoder:
             for key in self.filtered_encoding_mappings:
                 self.filtered_encoding_mappings[key] = (self.filtered_encoding_mappings[key] - min_val)/(max_val - min_val)
         
-        #apply the encoding
-        self.filtered_encoded_data = np.array([self.filtered_encoding_mappings[feature] 
-                                               if feature in self.filtered_feature_names
-                                               else self.filtered_encoding_mappings["other"] 
-                                               for feature in self.data])
-
         if self.binarize:
             for key in self.filtered_encoding_mappings:
                 self.filtered_encoding_mappings[key] = round(self.filtered_encoding_mappings[key])
+        
+        #apply the encoding
+        self.filtered_encoded_data = self._apply_encode_encoding(self.data,apply_filters=True)
 
         return
     
-    def apply_filter_to_data(self,new_data:list):
-        pass
-    #TODO implement this method
 
     
-    def apply_encoding_to_new_data(self,new_data:list):
-        pass
+    def apply_encoding_to_new_data(self,new_data:pd.DataFrame, apply_filter_if_enabled = True):
+        """Apply the encoding on a new set of data
+
+        Args:
+            new_data (pd.DataFrame): the new data that the encoding should be applied to
+            apply_filter_if_enabled (bool, optional): On true, applies filtering to the data if it is enabled (only on encode or bag-of-words encoding). Defaults to True.
+
+        Raises:
+            IncompatibleEncoder: _description_
+
+        Returns:
+            _type_: _description_
+        """
+        
+        #determine if filtering should be applied
+        if (apply_filter_if_enabled and self.filtering_enabled):
+            apply_filtering = True
+        else:
+            apply_filtering = False
+        
+        if self.encoder_type == "encode":
+            return self._apply_encode_encoding(new_data,apply_filters=apply_filtering)
+        elif self.encoder_type == "bag-of-words":
+            return self._apply_bag_of_words_encoding(new_data, apply_filters=apply_filtering)
+        elif self.encoder_type == "credit history":
+            return self._apply_credit_history_encoding(new_data)
+        else:
+            raise IncompatibleEncoder("encode,bag-of-words,credit history",self.encoder_type)

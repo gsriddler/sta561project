@@ -3,6 +3,8 @@ import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 import os
+
+#import the custom exceptions for encoder errors
 from CustomExceptions import IncompatibleEncoder
 
 #import the encoder class
@@ -128,13 +130,14 @@ class PreProcessor:
         return credit_history_encoder
 
     
-    def get_most_popular_features(self,encoder:Encoder,max_terms = 10,label_filters:list = None):
+    def get_most_popular_features(self,encoder:Encoder,max_terms = 10,label_filters:list = None, percentage = False):
         """Returns the most popular features for a given encoder with the option to filter for specific labels
 
         Args:
             encoder (Encoder): An encoder corresponding to the category of data that we want to identify the most common features for
             max_terms (int, optional): the number of popular labels to identify. Defaults to 10.
             label_filters (list, optional): A list of desired labels to filter for. Defaults to None.
+            percentage (bool, optional): Normalizes the frequencies and returns them as a percentage. Defaults to False.
 
         Raises:
             IncompatibleEncoder: Encoder must be of type "encode" or "bag-of-words"
@@ -149,21 +152,25 @@ class PreProcessor:
             data = encoder.encoded_data[self._get_filter_indicies(label_filters)]
         else:
             data = encoder.encoded_data
+            label_filters = self.label_encoder.feature_names
 
         #ensure that we aren't requesting more terms than available
         n = max_terms
         if max_terms > len(encoder.feature_names):
             n = len(encoder.feature_names)
         
-        if encoder.encoder_type == 'encode':
-            term_frequency = np.array([np.count_nonzero(data == encoder.encoding_mappings[feature]) for feature in encoder.feature_names])
-        elif encoder.encoder_type == 'bag-of-words':
-            term_frequency = np.sum(data,0)
-        else:
-            raise IncompatibleEncoder('encode or bag-of-words',encoder)
+        #get the term frequencies
+        feature_frequencies = self._get_feature_frequencies(encoder,percentage)
+        
+        #filter only for the specific terms that we are interested in
+        for i in range(len(self.label_encoder.feature_names)):
+            if self.label_encoder.feature_names[i] not in label_filters:
+                feature_frequencies[:,i] = 0
+        
+        feature_frequencies = np.sum(feature_frequencies,1)
     
         #get the arg sort to find the indicies of the terms that appear the most
-        sorted_indicies = np.argsort(-1 * term_frequency)
+        sorted_indicies = np.argsort(-1 * feature_frequencies)
 
         #get the terms that appear the most
         most_common_features = []
@@ -173,18 +180,19 @@ class PreProcessor:
             most_common_features.append(feature)
 
         #get their respective count
-        counts = term_frequency[sorted_indicies]
+        counts = feature_frequencies[sorted_indicies]
 
         #return the terms and their respective count
         return most_common_features,counts[0:n]
-    
-    def plot_most_popular_features(self,encoder:Encoder,labels_to_plot:list = None, max_terms = 10):
+
+    def plot_most_popular_features(self,encoder:Encoder,labels_to_plot:list = None, max_terms = 10,percentage=False):
         """Plots a sub-plot of the max_terms most popular features for each label in the labels_to_plot list
 
         Args:
             encoder (Encoder): An encoder corresponding to the category of data that we want to identify the most common features for
             labels_to_plot (list,optional): The labels to generate subplots for. When none, generates a subplot for every label Defaults to None
             max_terms (int, optional): The number of terms to plot for each label. Defaults to 10.
+            percentage (bool, optional): Normalizes the frequencies and returns them as a percentage. Defaults to False.
         """
 
         if not labels_to_plot:
@@ -198,25 +206,30 @@ class PreProcessor:
             most_common_features,counts = self.get_most_popular_features(
                 encoder=encoder,
                 max_terms=max_terms,
-                label_filters=[label]
+                label_filters=[label],
+                percentage=percentage
             )
 
             axs[i].bar(most_common_features,counts)
             axs[i].set_title("Most popular features for posts labeled: {}".format(label))
             axs[i].set_xlabel("Most popular features")
-            axs[i].set_ylabel("Count")
+            if percentage:
+                axs[i].set_ylabel("Percentage")
+            else:
+                axs[i].set_ylabel("Count")
 
         plt.show()
 
         return
 
-    def plot_count_for_features(self,encoder:Encoder,features_to_plot:list, labels_to_plot:list = None):
+    def plot_count_for_features(self,encoder:Encoder,features_to_plot:list, labels_to_plot:list = None, percentage=False):
         """Plots a line for the number of times each figure appears for each label that is requested
 
         Args:
             encoder (Encoder): An encoder corresponding to the category of data that we want to identify number of times specific features appear for
-            features_to_plot (list,optional): The features that we wish to determine the count for
+            features_to_plot (list): The features that we wish to determine the count for
             labels_to_plot (list,optional): The labels to generate subplots for. When none, generates a subplot for every label Defaults to None
+            percentage (bool, optional): on True, normalizes the counts to be the percentage that each feature applies to each label
         """
         
         #compute the counts corresponding to each feature and each label
@@ -224,7 +237,7 @@ class PreProcessor:
         if not labels_to_plot:
             labels_to_plot = self.label_encoder.feature_names
 
-        counts = np.zeros((len(labels_to_plot),len(features_to_plot)))
+        counts = np.zeros((len(features_to_plot),len(labels_to_plot)))
 
         for i in range(len(labels_to_plot)):
             label = labels_to_plot[i]
@@ -238,25 +251,29 @@ class PreProcessor:
                 elif encoder.encoder_type == 'bag-of-words':
                     count = np.sum(data,0)[encoder.encoding_mappings[feature]]
                 else:
-                    raise IncompatibleEncoder('encode or bag-of-words',encoder)
-                counts[i,j] = count
+                    raise IncompatibleEncoder('encode or bag-of-words',encoder.encoder_type)
+                counts[j,i] = count
+        
+        #normalize if requested
+        if percentage:
+            sums = np.sum(counts,1)
+            counts = counts / sums[:,None]
 
         #generate the plot
         plt.figure(figsize=(1 * len(labels_to_plot),4))
         for i in range(len(features_to_plot)):
-            plt.plot(labels_to_plot,counts[:,i],label=features_to_plot[i])
+            plt.plot(labels_to_plot,counts[i,:],label=features_to_plot[i])
         
         plt.title("Feature Count vs Sample Label")
         plt.xlabel("Labels")
-        plt.ylabel("Counts")
+        if percentage:
+            plt.ylabel("Percentage")
+        else:
+            plt.ylabel("Counts")
         plt.legend()
         plt.show()
 
         return
-
-
-        
-
 
     def _get_filter_indicies(self,label_filters:list):
         """Get an array of True/False values for samples that have the desired labels
@@ -278,3 +295,44 @@ class PreProcessor:
             valid_indicies = np.logical_or(valid_indicies,labels == label_encodings[label])
         
         return valid_indicies
+    
+    def _get_feature_frequencies(self,encoder:Encoder,percentage = False):
+        """Returns the frequency (expressed as a count or percentage) that each feature for an encoder corresponds to a specific set of labels
+
+        Args:
+            encoder (Encoder): The encoder used to encode the data
+            percentage (bool, optional): Normalizes the frequencies and returns them as a percentage. Defaults to False.
+
+        Raises:
+            IncompatibleEncoder: Raised when the encoder type is not 'encode' or 'bag-of-words'
+
+        Returns:
+            np.array: matrix of feature frequency where the rows are the individual features and the columns are the term frequencies
+        """
+        
+
+        labels = self.label_encoder.feature_names
+        
+        #initialize the term frequency label
+        feature_frequencies = np.zeros((len(encoder.feature_names),len(labels)))
+
+        for i in range(len(labels)):
+
+            #get the data corresponding to that filter
+            data = encoder.encoded_data[self._get_filter_indicies([labels[i]])]
+
+            #get the term frequency information
+            if encoder.encoder_type == 'encode':
+                feature_frequencies[:,i] = np.array([np.count_nonzero(data == encoder.encoding_mappings[feature]) for feature in encoder.feature_names])
+            elif encoder.encoder_type == 'bag-of-words':
+                feature_frequencies[:,i] = np.sum(data,0)
+            else:
+                raise IncompatibleEncoder('encode or bag-of-words',encoder.encoder_type)
+        
+        
+        #apply normalization if requested
+        if percentage:
+            sums = np.sum(feature_frequencies,1)
+            feature_frequencies = feature_frequencies / sums[:,None]
+        
+        return feature_frequencies
