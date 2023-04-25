@@ -115,7 +115,7 @@ class PreProcessor:
         )
         return feature_encoder
 
-    def get_credit_history_encoder_for_features(self,feature_names,compute_credit_history=True,normalize=False):
+    def get_credit_history_encoder_for_features(self,feature_names,compute_credit_history=True):
         """Returns a credit_history Encoder object
 
         Args:
@@ -126,7 +126,7 @@ class PreProcessor:
         """
 
         credit_history_encoder = Encoder(self.df[feature_names],verbose=self.verbose)
-        credit_history_encoder.credit_history(compute_credit_history=True)
+        credit_history_encoder.credit_history(compute_credit_history)
         return credit_history_encoder
 
     

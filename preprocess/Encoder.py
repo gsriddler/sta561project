@@ -41,7 +41,9 @@ class Encoder:
         self.tokenizer = RegexpTokenizer(r'\w+')
         self.lematizer = WordNetLemmatizer()
         self.vectorizer: CountVectorizer
-
+        self.clean_strings = True
+        self.remove_stop_words = True
+        self.lematize = True
         
         #Credit History Variables
         self.credit_weights = np.array([[-1,-0.5,0,0.5,1]])
@@ -130,14 +132,14 @@ class Encoder:
         if (apply_filters):
             if self.filtering_enabled:
                 #return the filtered-encoded data
-                return np.array([self.filtered_encoding_mappings[feature] 
+                return np.transpose(np.array([[self.filtered_encoding_mappings[feature] 
                                 if feature in self.filtered_feature_names
                                 else self.filtered_encoding_mappings["other"] 
-                                for feature in data])
+                                for feature in data]]))
             else:
                 raise FilteringNotEnabled(self.filtering_enabled)
         else:
-            return np.array([self.encoding_mappings[feature] for feature in data])
+            return np.transpose(np.array([[self.encoding_mappings[feature] for feature in data]]))
 
 
     def bag_of_words(self, clean_strings = True, remove_stop_words = True, lematize = True):
@@ -150,6 +152,11 @@ class Encoder:
         """
         #set encoding method
         self.encoder_type = "bag-of-words"
+
+        #save encoding settings
+        self.clean_strings = clean_strings
+        self.remove_stop_words = remove_stop_words
+        self.lematize = lematize
 
         #clean the text data
         if clean_strings:
@@ -262,6 +269,7 @@ class Encoder:
         Returns:
             np.array: the encoded data
         """
+
         if (apply_filters):
             if self.filtering_enabled:
                 return self.filtered_vectorizer.fit_transform(data).toarray()
@@ -279,6 +287,12 @@ class Encoder:
         #set the encoder type
         self.encoder_type = "credit history"
         self.compute_credit_history_enable = compute_credit_history
+
+        if compute_credit_history:
+            #set the feature names
+            self.feature_names = ["credit history"]
+        else:
+            self.feature_names = ['count_1','count_2','count_3','count_4','count_5']
         
         self.encoded_data = self._apply_credit_history_encoding(self.data)
     
@@ -296,7 +310,7 @@ class Encoder:
         credit_counts = data.replace('N/A','0').astype('int').to_numpy()
 
         if self.compute_credit_history_enable:
-            return self._compute_credit_histories(credit_counts)
+            return np.transpose(np.array([self._compute_credit_histories(credit_counts)]))
         else:
             return np.copy(credit_counts)
 
@@ -310,7 +324,8 @@ class Encoder:
         
         sums = np.sum(credit_counts,1)
         weighted_credit_counts = credit_counts / sums[:,None]
-
+        #set any nan values to zero as there isn't any credit associated with it
+        weighted_credit_counts[np.isnan(weighted_credit_counts)] = 0
         return np.matmul(weighted_credit_counts,np.transpose(self.credit_weights))[:,0]
     
     def configure_filter(self, filtered_terms:list):
@@ -318,6 +333,8 @@ class Encoder:
         #set filtering enabled flag
         self.filtering_enabled = True
 
+        self.filtered_encoding_mappings = {}
+        self.filtered_encoded_data: np.array = []
 
         #configure the requested filter
         if self.encoder_type == "encode":
@@ -326,9 +343,6 @@ class Encoder:
             self._configure_filter_bag_of_words(filtered_terms)
         else:
             raise IncompatibleEncoder("encode or bag-of-words",self.encoder_type)
-
-        self.filtered_encoding_mappings = {}
-        self.filtered_encoded_data: np.array = []
 
 
     def _configure_filter_bag_of_words(self, filtered_terms:list):
@@ -419,8 +433,28 @@ class Encoder:
         if self.encoder_type == "encode":
             return self._apply_encode_encoding(new_data,apply_filters=apply_filtering)
         elif self.encoder_type == "bag-of-words":
+            #perform any clearning of the data
+            if self.clean_strings:
+                new_data = [
+                    self._clean_text(
+                    text,
+                    remove_stop_words=self.remove_stop_words,
+                    lematize=self.lematize) for text in new_data]
             return self._apply_bag_of_words_encoding(new_data, apply_filters=apply_filtering)
         elif self.encoder_type == "credit history":
             return self._apply_credit_history_encoding(new_data)
         else:
             raise IncompatibleEncoder("encode,bag-of-words,credit history",self.encoder_type)
+
+    def get_encoded_data(self):
+
+        if self.filtering_enabled:
+            return self.filtered_encoded_data
+        else:
+            return self.encoded_data
+    
+    def get_feature_names(self):
+        if self.filtering_enabled:
+            return self.filtered_feature_names
+        else:
+            return self.feature_names
