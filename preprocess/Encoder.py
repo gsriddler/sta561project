@@ -86,9 +86,10 @@ class Encoder:
         #generate feature,encoding pairs for each possible feature in the data
         if not encoding_mappings:
             #get a list of unique strings in the data
-            self.feature_names = list(set(self.data))
+            self.feature_names = ["other"]
+            self.feature_names = self.feature_names + list(set(self.data))
             num_features = len(self.feature_names)
-            encodings = [i + 1 for i in range(num_features)]
+            encodings = [i for i in range(num_features)]
             self.encoding_mappings = {feature:encoding for feature,encoding in zip(self.feature_names,encodings)}
         else:
             self.encoding_mappings = encoding_mappings.copy()
@@ -139,7 +140,10 @@ class Encoder:
             else:
                 raise FilteringNotEnabled(self.filtering_enabled)
         else:
-            return np.transpose(np.array([[self.encoding_mappings[feature] for feature in data]]))
+            return np.transpose(np.array([[self.encoding_mappings[feature] 
+                                            if feature in self.feature_names
+                                            else self.encoding_mappings["other"]
+                                            for feature in data]]))
 
 
     def bag_of_words(self, clean_strings = True, remove_stop_words = True, lematize = True):
@@ -384,7 +388,8 @@ class Encoder:
         #setup the feature names, include and include an encoding for "other" in the encodings
         self.filtered_feature_names = ["other"]
         for item in filtered_terms:
-            self.filtered_feature_names.append(item)
+            if item != "other":
+                self.filtered_feature_names.append(item)
         
         #generate a new series of filtered feature encodings
         num_features = len(self.feature_names)
