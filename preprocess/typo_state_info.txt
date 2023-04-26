@@ -1,0 +1,32 @@
+array(['', 'Alabama', 'Alaska', 'Arizona', 'Arkansas', 'Atlanta',
+       'California', 'California ', 'China', 'Colorado', 'Colorado ',
+       'Connecticut', 'Delaware', 'District of Columbia', 'Florida',
+       'Florida ', 'Georgia', 'Georgia ', 'Hawaii', 'Idaho', 'Illinois',
+       'Illinois ', 'Indiana', 'Iowa', 'Kansas', 'Kentucky', 'Louisiana',
+       'Maine', 'Maryland', 'Massachusetts', 'Massachusetts ', 'Michigan',
+       'Minnesota', 'Mississippi', 'Missouri', 'Montana', 'Nebraska',
+       'Nevada', 'New Hampshire', 'New Hampshire ', 'New Jersey',
+       'New Mexico', 'New York', 'New York ', 'None', 'North Carolina',
+       'North Dakota', 'Ohio', 'Oklahoma', 'Oregon', 'Oregon ',
+       'PA - Pennsylvania', 'Pennsylvania', 'Qatar', 'Rhode Island',
+       'Rhode Island ', 'Rhode island', 'Russia', 'South Carolina',
+       'South Dakota', 'Tennesse', 'Tennessee', 'Tex', 'Texas',
+       'United Kingdom', 'Unknown', 'Utah', 'Vermont', 'Virgiia',
+       'Virgina', 'Virginia', 'Virginia ',
+       'Virginia director, Coalition to Stop Gun Violence', 'Washington',
+       'Washington D.C.', 'Washington DC', 'Washington state',
+       'Washington, D.C.', 'Washington, D.C. ', 'West Virginia',
+       'Wisconsin', 'Wisconsin ', 'Wyoming', 'ohio', 'the United States'],
+      dtype=object)
+
+1. remove white spac
+2. ' ' =  'Unknown' = Nan = 'None'
+3. 'District of Columbia','Washington D.C.', 'Washington DC','Washington, D.C.', 'Washington, D.C. '
+4. 'ohio' -> 'Ohio'
+5. 'PA - Pennsylvania' -> Pennsylvania
+6. 'Rhode island' -> 'Rhode Island'
+7. 'Virgina', 'Virginia', -> 'Virginia'
+8. 'Washington state' -> 'Washington'
+9. 'Tex' -> 'Texas'
+10. 'Tennesse' -> 'Tennessee'
+

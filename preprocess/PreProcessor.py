@@ -147,11 +147,10 @@ class PreProcessor:
         """
 
         #filter the data for certain labels if requested
-        if label_filters:
-            #identify the indicies of the in the labels that match the filter constraints
-            data = encoder.encoded_data[self._get_filter_indicies(label_filters)]
-        else:
-            data = encoder.encoded_data
+        if not label_filters:
+#            #identify the indicies of the in the labels that match the filter constraints
+#            data = encoder.encoded_data[[self._get_filter_indicies(label_filters)]]
+#        else:
             label_filters = self.label_encoder.feature_names
 
         #ensure that we aren't requesting more terms than available
@@ -288,7 +287,7 @@ class PreProcessor:
         #identify the indicies of the labels that match the filter constraints
         valid_indicies = np.zeros(np.shape(self.label_encoder.encoded_data)[0])
 
-        labels = self.label_encoder.encoded_data
+        labels = self.label_encoder.encoded_data[:,0]
         label_encodings = self.label_encoder.encoding_mappings
 
         for label in label_filters:
